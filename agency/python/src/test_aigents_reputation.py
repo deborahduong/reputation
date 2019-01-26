@@ -1,6 +1,6 @@
 # MIT License
 # 
-# Copyright (c) 2018-2019 Stichting SingularityNET
+# Copyright (c) 2018 Stichting SingularityNET
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -27,12 +27,35 @@ import time
 
 from test_reputation import *
 from aigents_reputation_cli import *
-
+from aigents_reputation_api import *
+"""
 # Test Command-line-based Aigents Reputation Service wrapper 
-class TestAigentsCLIReputationService(TestReputationServiceParameters,unittest.TestCase):
+class TestAigentsCLIReputationService(TestReputationServiceBase,unittest.TestCase):
 
 	def setUp(self):
 		self.rs = AigentsCLIReputationService('../../bin','./','test',False)
+"""
+# Test Web-service-based Aigents Reputation Service wrapper
+# TODO make port 1180 configurable!
+class TestAigentsAPIReputationService(TestReputationServiceParameters,unittest.TestCase):
 
+	@classmethod
+	def setUpClass(cls):
+		cmd = 'java -cp ../../bin/mail.jar:../../bin/pdfbox-app-2.0.0-RC2.jar:../../bin/javax.json-1.0.2.jar:../../bin/Aigents.jar net.webstructor.agent.Farm store path \'./al_test.txt\', http port 1180, cookie domain localtest.com, console off'
+		cls.server_process = subprocess.Popen(cmd.split())
+		#self.server_process = subprocess.Popen(['sh','aigents_server_start.sh'])
+		time.sleep(10)
+
+	@classmethod
+	def tearDownClass(cls):
+		cls.server_process.kill()
+		os.system('kill -9 $(ps -A -o pid,args | grep java | grep \'net.webstructor.agent.Farm\' | grep 1180 | awk \'{print $1}\')')
+
+	def setUp(self):
+		self.rs = AigentsAPIReputationService('http://localtest.com:1180/', 'john@doe.org', 'q', 'a', False, 'test', True)
+
+	def tearDown(self):
+		del self.rs
+		
 if __name__ == '__main__':
     unittest.main()
