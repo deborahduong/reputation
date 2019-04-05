@@ -465,12 +465,11 @@ def logratings_precision(rating,lograting,precision,weighting):
                 #print(rating,precision,'=>',new_rating,new_weight)
 
     new_rating = round(new_rating) #TODO see if we need to keep this rounding which is needed to sync-up with Aigents Java reputation system
-    return(new_rating,new_weight) #return weighted value Fij*Qij to sum and weight Qij to denominate later in dRit = Σj (Fij * Qij * Rjt-1 ) / Σj (Qij)
+    return(new_rating,new_weight) #return weighted value Fij*Qij to sum and weight Qij to denominate later in dRit = Î£j (Fij * Qij * Rjt-1 ) / Î£j (Qij)
 
 ### Get updated reputations, new calculations of them...
 ### This one is with log...
-def calculate_new_reputation(new_array,to_array,reputation,rating,precision,default,unrated,normalizedRanks=True,weighting=True,denomination=True,
-                                   liquid = False,logratings=False,logranks=True) :
+def calculate_new_reputation(new_array,to_array,reputation,rating,precision,default,unrated,normalizedRanks=True,weighting=True,denomination=True,liquid = False,logratings=False,logranks=True):
     ### The output will be mys; this is the rating for that specific day (or time period).
     ### This is needed; first create records for each id.
     mys = {}
@@ -545,11 +544,20 @@ def calculate_new_reputation(new_array,to_array,reputation,rating,precision,defa
     ### We divide it by max value, as specified. There are different normalizations possible...
     return(mys)
 
-def normalized_differential(mys,normalizedRanks,our_default):
+def normalized_differential(raw,normalizedRanks,our_default,log=True):
+    if log:
+        mys = {}
+        for k in raw.keys():
+        	v = raw[k]
+        	# f = v < 0 ? -log10(1 - v) : log10(1 + v)
+        	mys[k] = -np.log10(1 - v) if v < 0 else np.log10(1 + v)
+    else:
+        mys = raw
     max_value = max(mys.values(), default=1)
     min_value = min(mys.values(), default=0)
     if max_value==min_value:
         min_value = max_value - our_default ### as the solution to issue #157
+    #print(normalizedRanks,min_value,max_value)
     for k in mys.keys():
         if max_value==min_value:
             mys[k] = (mys[k]-min_value)
@@ -584,7 +592,10 @@ def normalize_reputation(reputation,new_array,unrated,default1,decay,conservatis
     min_value = min(reputation.values(), default=0)
     for k in reputation.keys():
         if normalizedRanks: ### normalizedRanks is equal to fullnorm.
-            reputation[k] = (reputation[k]-min_value) /(max_value-min_value)
+            if max_value!=min_value:
+                reputation[k] = (reputation[k]-min_value) /(max_value-min_value)
+            else:
+                pass
         else:
             if max_value!= 0:
                 reputation[k] = reputation[k] /max_value
