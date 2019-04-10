@@ -177,7 +177,6 @@ class TestReputationServiceParametersBase(TestReputationServiceBase):
 		# so the ranks are rounded up consistently in the following block
 		
 		ranks = rs.get_ranks_dict({'date':dt3})
-		#print(ranks)
 		#self.assertEqual(ranks['4'], 9)
 		self.assertTrue(ranks['4'] == 9 or ranks['4'] == 8)
 		#test with alt decay to 50
@@ -185,14 +184,12 @@ class TestReputationServiceParametersBase(TestReputationServiceBase):
 		self.clear()
 		self.rate_3_days(dt1,dt2,dt3)
 		ranks = rs.get_ranks_dict({'date':dt3})
-		#print(ranks)
 		self.assertEqual(ranks['4'], 46)	
 		#test with alt decay to 100
 		self.assertEqual( rs.set_parameters({'decayed':1.0}), 0 )
 		self.clear()
 		self.rate_3_days(dt1,dt2,dt3)
 		ranks = rs.get_ranks_dict({'date':dt3})
-		#print(ranks)
 		#self.assertEqual(ranks['4'], 84)
 		self.assertTrue(ranks['4'] == 83 or ranks['4'] == 84)
 	
@@ -626,7 +623,93 @@ class TestReputationServiceParametersBase(TestReputationServiceBase):
 		ranks = rs.get_ranks_dict({'date':dt4})
 		correct_dict = {'10': 100.0, '11': 100.0, '1': 63.0, '12': 50.0, '2': 38.0, '20': 38.0, '21': 38.0, '3': 25.0, '30': 0.0}
 		self.assertDictEqual(ranks,correct_dict)
+	def test_put_ratings(self):
+		print('Testing '+type(self).__name__+' put_ratings')
+		rs = self.rs
+		
+		#RS must be persistent. If Python RS coes not keep the data, it is something that we will have to fix in the future.
+		#But Aigents RS is persistent, so it is a must to clear data at every run.  
+		rs.clear_ranks()
+		rs.clear_ratings()
+		
+		def get_data_in():
+			#transactions = pd.read_csv('./testdata/issue1.tsv',header = None,sep="\t") 
+			
+			# The data in issue1_25.tsv have issue #171
+			#transactions = pd.read_csv('./testdata/issue1_25.tsv',header = None,sep="\t") 
+			
+			transactions = pd.read_csv('./testdata/issue1_16cleaned.tsv',header = None,sep="\t") 
 
+			transactions.columns = ['what','Time','type','from','to','value','unit','child','parent','title',
+			                        'input','tags','format','block','parent']
+			from1 = transactions['from']
+			type1 = transactions['type']
+			to1 = transactions['to']
+			value1 = transactions['value']
+			time1 = transactions['Time']
+			my_time = transactions['Time']
+			dates = []
+			## Convert dates;
+			i = 0
+			while i<len(my_time):
+			    dates.append(datetime.datetime.strptime(datetime.datetime.utcfromtimestamp(my_time[i]).strftime('%Y-%m-%d'), "%Y-%m-%d"))
+			    i+=1
+
+			our_ratings = []
+			i = 0
+			while i<len(transactions):
+			    #our_ratings.append({'from':from1[i],'type':type1[i],'to':to1[i],
+			    #                   'value':value1[i],'weight':'NaN','time':dates[i]})
+			    our_ratings.append({'from':from1[i],'type':type1[i],'to':to1[i],
+			                       'value':value1[i],'time':dates[i].date()})
+			    i+=1
+
+			return(our_ratings,dates)        
+		rs.set_parameters({
+		  "precision": 0.01,
+		  "default": 0.5,
+		  "conservatism": 0.5,
+		  "fullnorm": True,
+		  "weighting": True,
+		  "logratings": False,
+		  "decayed": 0.5,
+		  "liquid": False,
+		  "logranks": True,
+		  "downrating": False,
+		  "update_period": 1,
+		  "aggregation": False,
+		  "denomination": False,
+		  "unrated": False })
+		our_ratings, dates = get_data_in()
+		dates1 = np.unique(dates)
+		num_days = len(np.unique(dates))
+		
+		for k in our_ratings:
+		    rs.put_ratings([k])
+		
+		date1 = dates1[0].date()
+		rs.update_ranks(date1)
+		ranks = rs.get_ranks_dict({'date':date1})        
+		ratings_cnt = 0
+		ratings_cnt += len(rs.get_ratings({'ids':['50'],'since':date1,'until':date1})[1]);
+		ratings_cnt += len(rs.get_ratings({'ids':['1'],'since':date1,'until':date1})[1]);
+		ratings_cnt += len(rs.get_ratings({'ids':['2'],'since':date1,'until':date1})[1]);            
+		self.assertEqual(ratings_cnt,16)
+		
+		# Java
+		#differential: {2=600.0, 1=500.0, 50=400.0}
+		#normalized: {2=100.0, 1=55.02378567291773, 50=0.0}
+		#blended: {2=75.0, 1=52.51189283645887, 50=25.0}
+		#normalized: {2=100.0, 1=70.0158571152785, 50=33.33333333333333}
+		#self.assertDictEqual(ranks,{'2': 100.0, '1': 70.0, '50': 33.0})
+		
+		# Python
+		#differential: {'2': 600.0, '50': 400.0, '1': 500.0}
+		#normalized: {'2': 1.0, '50': 0.0, '1': 0.5}
+		self.assertDictEqual(ranks,{'2': 100.0, '1': 70.0, '50': 33.0})
+        
+        
+        
 
 class TestReputationServiceTemporal(TestReputationServiceParametersBase):
 #class TestReputationServiceTemporal(object):
@@ -678,6 +761,11 @@ class TestReputationServiceTemporal(TestReputationServiceParametersBase):
 		#print(ranks3)
 		self.assertDictEqual(ranks3,{'2': 100.0, '1': 67.0, '4': 67.0, '6': 67.0, '3': 33.0, '5': 33.0})
 
+        
+
+        
+        
+        
 
 class TestReputationServiceAdvanced(TestReputationServiceParametersBase):
     
@@ -705,115 +793,59 @@ class TestReputationServiceAdvanced(TestReputationServiceParametersBase):
 		ranks = rs.get_ranks_dict({'date':dt2})
 		self.assertEqual(ranks['1'],68)
 
+        
+        
 
 class TestReputationServiceDebug(TestReputationServiceAdvanced):
 #class TestReputationServiceDebug(object):
-		    
-	def test_put_ratings(self):
-		print('Testing '+type(self).__name__+' put_ratings')
-		rs = self.rs
-		
-		#RS must be persistent. If Python RS coes not keep the data, it is something that we will have to fix in the future.
-		#But Aigents RS is persistent, so it is a must to clear data at every run.  
-		rs.clear_ranks()
-		rs.clear_ratings()
-		
-		def get_data_in():
-			#transactions = pd.read_csv('./testdata/issue1.tsv',header = None,sep="\t") 
-			
-			# The data in issue1_25.tsv have issue #171
-			#transactions = pd.read_csv('./testdata/issue1_25.tsv',header = None,sep="\t") 
-			
-			transactions = pd.read_csv('./testdata/issue1_16cleaned.tsv',header = None,sep="\t") 
-
-			transactions.columns = ['what','Time','type','from','to','value','unit','child','parent','title',
-			                        'input','tags','format','block','parent']
+		def test_roundings(self):
+			print('Testing '+type(self).__name__+' roundings')
+			rs = self.rs
+			transactions = pd.read_csv('./testdata/problematic_transactions2.csv') 
 			from1 = transactions['from']
 			type1 = transactions['type']
 			to1 = transactions['to']
 			value1 = transactions['value']
-			time1 = transactions['Time']
-			my_time = transactions['Time']
+			time1 = transactions['time']
+			my_time = transactions['time']
+			weight = transactions['weight']        
 			dates = []
 			## Convert dates;
 			i = 0
 			while i<len(my_time):
-			    dates.append(datetime.datetime.strptime(datetime.datetime.utcfromtimestamp(my_time[i]).strftime('%Y-%m-%d'), "%Y-%m-%d"))
-			    i+=1
-
+				dates.append(datetime.datetime.utcfromtimestamp(my_time[i]).strftime('%Y-%m-%d'))
+				i+=1
+			dates1 = np.unique(dates)
 			our_ratings = []
 			i = 0
 			while i<len(transactions):
-			    #our_ratings.append({'from':from1[i],'type':type1[i],'to':to1[i],
-			    #                   'value':value1[i],'weight':'NaN','time':dates[i]})
-			    our_ratings.append({'from':from1[i],'type':type1[i],'to':to1[i],
-			                       'value':value1[i],'time':dates[i].date()})
-			    i+=1
+				our_ratings.append({'from':from1[i],'type':type1[i],'to':to1[i],
+			                       'value':value1[i],'weight':weight[i],'time':datetime.datetime.strptime(dates[i], '%Y-%m-%d').date()})
+				i+=1
+			rs.set_parameters({'fullnorm':True,'weighting':True ,'logratings':True,'downrating':False,'denomination':True ,'unrated':True,'default':0.0,'decayed':0.5,'ratings':1.0,'spendings':0.0,'conservatism':0.5})
+	
+			num_days = len(np.unique(dates))
+			for k in our_ratings:
+				rs.put_ratings([k])
+			i = 0
+			rs.update_ranks(datetime.datetime.strptime(dates1[i], '%Y-%m-%d').date())
+			i+=1
+			rs.update_ranks(datetime.datetime.strptime(dates1[i], '%Y-%m-%d').date())
+			i+=1
+			rs.update_ranks(datetime.datetime.strptime(dates1[i], '%Y-%m-%d').date())
+			ranks = rs.get_ranks_dict({'date':datetime.datetime.strptime(dates1[i], '%Y-%m-%d').date()})
+			self.assertDictEqual(ranks,{'2': 87.0, '3': 29.0, '4': 24.0, '9': 100.0, '5': 72.0, '6': 72.0, '7': 72.0, '8': 72.0, '10': 72.0})        
+			### Note, the reason why Python and Java differ is because Java looks at above numbers and makes calculations on them.
+			### Python however, has more exact numbers in the background and considers those only as roundings.
+			### Here are the Python numbers in the background: {'2': 0.8661282770451763, '3': 0.2887094256817254, '4': 0.23825520281251886, '9': 1.0, '5': 0.7217735642043135, '6': 0.7217735642043135, '7': 0.7217735642043135, '8': 0.7217735642043135, '10': 0.7217735642043135}
+			### 
+			i+=1
+			rs.update_ranks(datetime.datetime.strptime(dates1[i], '%Y-%m-%d').date())
+			ranks = rs.get_ranks_dict({'date':datetime.datetime.strptime(dates1[i], '%Y-%m-%d').date()})
+			### Differential is 0 for 2 and 1 for 9. So, 2 and all others except maybe 9 decay toward 0 for 50% weight.
+			### differential (non-normalized): {'2': 1.7285559067530614, '9': 1.9003277382090908}
+			### differential (normalized): {'2': 0.0, '9': 1.0}
+			### Once we update it is in Java (for '2': 44 = 87/2) and Python round(0.4330*100=43). Similar with ID '3'
+			### We divide by 2 because it decays towards 0 each time with conservatism=0.5
+			self.assertDictEqual(ranks,{'2': 43.0, '3': 39.0, '4': 37.0, '9': 100.0, '5': 61.0, '6': 61.0, '7': 61.0, '8': 61.0, '10': 61.0})
 
-			return(our_ratings,dates)
-		rs.set_parameters({
-		  "precision": 0.01,
-		  "default": 0.5,
-		  "conservatism": 0.5,
-		  "fullnorm": True,
-		  "weighting": True,
-		  "logratings": False,
-		  "decayed": 0.5,
-		  "liquid": False,
-		  "logranks": False,
-		  "downrating": False,
-		  "update_period": 1,
-		  "aggregation": False,
-		  "denomination": False,
-		  "unrated": False })
-		our_ratings, dates = get_data_in()
-		dates1 = np.unique(dates)
-		num_days = len(np.unique(dates))
-		
-		for k in our_ratings:
-		    rs.put_ratings([k])
-		
-		date1 = dates1[0].date()
-		rs.update_ranks(date1)
-		ranks = rs.get_ranks_dict({'date':date1})
-		
-		#Current Aigents Java API for get_ratings is underimplemented, so it can accept only one id in the filter.
-		#Let us ignore that for now, may fix later in #192 . 
-		#ratings_cnt = len(rs.get_ratings({'ids':['0','1','2'],'since':datetime.date(2017, 1, 1),'until':datetime.date(2018, 1, 2)})[1])
-		ratings_cnt = 0
-		ratings_cnt += len(rs.get_ratings({'ids':['50'],'since':date1,'until':date1})[1]);
-		ratings_cnt += len(rs.get_ratings({'ids':['1'],'since':date1,'until':date1})[1]);
-		ratings_cnt += len(rs.get_ratings({'ids':['2'],'since':date1,'until':date1})[1]);
-
-		#print(ratings_cnt)
-		#print(ranks)
-		
-		### The following applies to ./testdata/issue1.tsv
-		### Why 265? If we look at all the transactions in issue1.tsv, we can see there are 582 of them. If we filter
-		#self.assertEqual(ratings_cnt,265)
-		### to only those that are directed to agent 0,1 or 2, we get 265 transactions.
-		#self.assertDictEqual(ranks,{'2': 33.0, '50': 100.0, '1': 34.0, '3': 63.0, '4': 74.0, '0': 42.0})
-		### About the second assertEqual - not certain if it's correct, but this is what Python rep system returns.
-
-		### The following applies to ./testdata/issue1_25.tsv
-		#self.assertEqual(ratings_cnt,25)
-		#self.assertDictEqual(ranks,{'50': 100.0, '1': 43.0, '2': 33.0}) # Java
-		#self.assertDictEqual(ranks,{'2': 33.0, '50': 100.0, '1': 36.0}) # Python
-		
-		### The following applies to ./testdata/issue1_16cleaed.tsv
-		self.assertEqual(ratings_cnt,16)
-		
-		# Java
-		#differential: {2=600.0, 1=500.0, 50=400.0}
-		#normalized: {2=100.0, 1=55.02378567291773, 50=0.0}
-		#blended: {2=75.0, 1=52.51189283645887, 50=25.0}
-		#normalized: {2=100.0, 1=70.0158571152785, 50=33.33333333333333}
-		#self.assertDictEqual(ranks,{'2': 100.0, '1': 70.0, '50': 33.0})
-		
-		# Python
-		#differential: {'2': 600.0, '50': 400.0, '1': 500.0}
-		#normalized: {'2': 1.0, '50': 0.0, '1': 0.5}
-		self.assertDictEqual(ranks,{'2': 100.0, '50': 33.0, '1': 67.0}) # Python
-		
-
-	#TODO Test self.parameters['logranks'] after when implemented:
