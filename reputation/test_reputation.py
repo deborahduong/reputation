@@ -817,11 +817,6 @@ class TestReputationServiceParametersBase(TestReputationServiceBase):
 		self.clear()
 		rs.clear_ranks() 
         
-        
-
-class TestReputationServiceTemporal(TestReputationServiceParametersBase):
-#class TestReputationServiceTemporal(object):
-
 	def test_spending(self):
 		print('Testing '+type(self).__name__+' spending')
 		rs = self.rs
@@ -855,20 +850,20 @@ class TestReputationServiceTemporal(TestReputationServiceParametersBase):
 		rs.set_parameters({'default':0.0,'decayed':0.0,'ratings':0.0,'spendings':1.0})
 		rate()
 		ranks2 = rs.get_ranks_dict({'date':dt2})
-		#print(ranks2)
+		#print("ranks2",ranks2)
 		ranks3 = rs.get_ranks_dict({'date':dt3})
-		#print(ranks3)
+		#print("ranks3",ranks3)
 		self.assertDictEqual(ranks3,{'2': 100.0, '1': 50.0, '3': 0.0, '4': 0.0, '5': 0.0, '6': 0.0})
 
 		#test with Liquid SOM (Proof-of-Burn + Proof-of-Reputation)
 		rs.set_parameters({'default':0.5,'decayed':0.0,'ratings':0.5,'spendings':0.5})
 		rate()
 		ranks2 = rs.get_ranks_dict({'date':dt2})
-		#print(ranks2)
+		#print(,ranks2)
 		ranks3 = rs.get_ranks_dict({'date':dt3})
-		#print(ranks3)
+		#print("ranks3",ranks3)
 		self.assertDictEqual(ranks3,{'2': 100.0, '1': 67.0, '4': 67.0, '6': 67.0, '3': 33.0, '5': 33.0})
-
+        
 
 class TestReputationServiceAdvanced(TestReputationServiceParametersBase):
     
