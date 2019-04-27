@@ -37,151 +37,9 @@ import time
 import logging
 import math
 
-
-# reputation_scenario_test
 import random
 import datetime
 import time
-#from aigents_api import *
-
-network = 'reptest'
-
-def pick_agent(list,self,memories = None,bad_agents = None):
-	picked = None
-	if memories is not None:
-		if self in memories:
-			blacklist = memories[self]
-		else:
-			blacklist = []
-			memories[self] = blacklist
-	else:
-		blacklist = None
-	while(picked is None):
-		picked = list[random.randint(0,len(list)-1)]
-		if picked == self:
-			picked = None # skip self
-		else:
-			if blacklist is not None and picked in blacklist:
-				picked = None # skip those who already blacklisted
-	if blacklist is not None and bad_agents is not None and picked in bad_agents:
-		blacklist.append(picked) #blacklist picked bad ones once picked so do not pick them anymore
-	return picked
-
-
-def log_file(file,date,type,agent_from,agent_to,cost,rating):
-	timestr = str(time.mktime(date.timetuple()))
-	timestr = timestr[:-2] # trim .0 part
-	file.write(network + '\t' + timestr + '\t' + type + '\t' + str(agent_from) + '\t' + str(agent_to) + '\t' + str(cost) + '\t' \
-			+ '\t\t\t\t\t\t\t\t' + ('' if rating is None else str(rating)) + '\t\n')
-
-
-def simulate(good_agent,bad_agent,since,sim_days,ratings):
-	random.seed(1) # Make it deterministic
-	memories = {} # init blacklists of compromised ones
-	
-	#print('Good:',good_agent)
-	#print('Bad:',bad_agent)
-	
-	good_agents = [i for i in range(good_agent['range'][0],good_agent['range'][1]+1)]
-	bad_agents = [i for i in range(bad_agent['range'][0],bad_agent['range'][1]+1)]
-	#print('Good:',good_agents)
-	#print('Bad:',bad_agents)
-	
-	all_agents = good_agents + bad_agents
-
-	#print('All:',all_agents)
-	
-	good_agents_transactions = good_agent['transactions']
-	bad_agents_transactions = bad_agent['transactions']
-	good_agents_values = good_agent['values']
-	bad_agents_values = bad_agent['values']
-	good_agents_count = len(good_agents)
-	bad_agents_count = len(bad_agents)
-	good_agents_volume = good_agents_count * good_agents_transactions * good_agents_values[0]
-	bad_agents_volume = bad_agents_count * bad_agents_transactions * bad_agents_values[0]
-	code = ('r' if ratings else 'p') + '_' + str(round(good_agents_values[0]/bad_agents_values[0])) + '_' + str(good_agents_transactions/bad_agents_transactions) 
-	transactions = 'transactions_' + code + '.tsv'
-	transactions="transactions.tsv"
-	print('Good:',len(good_agents),good_agents_values[0],good_agents_transactions,len(good_agents)*good_agents_values[0]*good_agents_transactions)
-	print('Bad:',len(bad_agents),bad_agents_values[0],bad_agents_transactions,len(bad_agents)*bad_agents_values[0]*bad_agents_transactions)
-	print('Code:',code,'Volume ratio:',str(good_agents_volume/bad_agents_volume))
-    
-    
-    ### Get transactions in;
-	network = []
-	Timestamp = []
-	type1 = []
-	From = []
-	To = []
-	Rating = []
-	Amount = []    
-	with open(transactions, 'w') as file:
-		for day in range(sim_days):
-			date = since + datetime.timedelta(days=day)
-			#print(day,date,memories)
-
-			for agent in good_agents:
-				for t in range(0, good_agents_transactions):
-					other = pick_agent(all_agents,agent,memories,bad_agents)
-					cost = random.randint(good_agents_values[0],good_agents_values[1])
-					#i = len(mynewdf)
-					#mynewdf.loc[i] = 0
-					if ratings:
-						# while ratings range is [0.0, 0.25, 0.5, 0.75, 1.0], we rank good agents as [0.25, 0.5, 0.75, 1.0]
-						rating = 0.0 if other in bad_agents else float(random.randint(1,4))/4
-						log_file(file,date,'rating',agent,other,rating,cost)
-						network.append('reptest')
-						Timestamp.append(date)
-						type1.append('rating')
-						From.append(agent)
-						To.append(other)
-						Rating.append(rating)
-						Amount.append(cost)
-
-					else: 
-						network.append('reptest')
-						Timestamp.append(date)
-						type1.append('rating')
-						From.append(agent)
-						To.append(other)
-						Rating.append(np.nan)
-						Amount.append(cost)                        
-						log_file(file,date,'transfer',agent,other,cost,None)
-			for agent in bad_agents:
-				for t in range(0, bad_agents_transactions):
-					#i = len(mynewdf)
-					#mynewdf.loc[i] = 0
-					other = pick_agent(bad_agents,agent)
-					cost = random.randint(bad_agents_values[0],bad_agents_values[1])
-					if ratings:
-						rating = 1.0
-						log_file(file,date,'rating',agent,other,rating,cost)
-						network.append('reptest')
-						Timestamp.append(date)
-						type1.append('rating')
-						From.append(agent)
-						To.append(other)
-						Rating.append(rating)
-						Amount.append(cost)                                          
-					else: 
-						log_file(file,date,'transfer',agent,other,cost,None)
-						network.append('reptest') #adsa
-						Timestamp.append(date)
-						type1.append('rating')
-						From.append(agent)
-						To.append(other)
-						Rating.append(np.nan)
-						Amount.append(cost)                       
-	with open('users.tsv', 'w') as file:
-		for agent in all_agents:
-			goodness = '0' if agent in bad_agents else '1'
-			file.write(str(agent) + '\t' + goodness + '\n')
-	print(len(network))   
-	dfs = {'network':network,'Date':Timestamp,'type':type1,'From':From,'To':To,
-          'Rating':Rating,'Amount':Amount}
-	mynewdf = pd.DataFrame(data=dfs)
-	return(mynewdf)
-
 
 ### Get strings between two strings; will be useful when extracting the date.
 def find_between( s, first, last ):
@@ -436,7 +294,8 @@ def update_reputation(reputation,new_array,default_reputation,spendings):
 def logratings_precision(rating,lograting,precision,weighting):
     new_weight = None # assume no weight computed by default
     if not weighting:
-        rating[2] = None
+        #rating[2] = None
+        return(rating[3],None)
     if lograting:
         if rating[2] == None:
             if precision==None:
@@ -455,7 +314,6 @@ def logratings_precision(rating,lograting,precision,weighting):
                 else:
                     new_weight = np.log10(1+ rating[2]/precision)
                 new_rating = round(new_weight * rating[3])
-                #print(rating,precision,'=>',new_rating,new_weight)
     else:
         if precision==None:
             precision=1
@@ -507,12 +365,15 @@ def calculate_new_reputation(new_array,to_array,reputation,rating,precision,defa
             for k in get_subset:
                 if weighting:
                     new_rating, new_weight = weight_calc(new_array[k],logratings,precision,weighting)
+                    #print("WW new_rating, new_weight",new_rating, new_weight)
                     #print(unique_ids[i],new_rating,new_weight)
                     amounts.append(new_rating * rater_reputation(reputation,new_array[k][0],default,liquid=liquid))
                     if denomination and new_weight is not None:
                     	denominators.append(new_weight) # denomination by sum of weights in such case
                 else:
                     new_rating, new_weight = weight_calc(new_array[k],logratings,precision,weighting)
+                    new_rating = my_round(new_rating,0)
+                    #print("NW new_rating, new_weight",new_rating, new_weight)
                     amounts.append(new_rating * rater_reputation(reputation,new_array[k][0],default,liquid=liquid))#*100*precision**-1
                     #no need for denomination by sum of weights in such case 
             mys[unique_ids[i]] = sum(amounts)
@@ -558,6 +419,9 @@ def calculate_new_reputation(new_array,to_array,reputation,rating,precision,defa
     return(mys)
 
 def normalized_differential(mys,normalizedRanks,our_default,spendings,log=True):
+    if log:
+        for k in mys.keys():
+            mys[k] = -np.log10(1 - mys[k]) if mys[k] < 0 else np.log10(1 + mys[k])
     max_value = max(mys.values(), default=1)
     min_value = min(mys.values(), default=0)
     if max_value==0: #normalized zeroes are just zeroes
