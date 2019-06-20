@@ -161,7 +161,16 @@ class PythonReputationService(ReputationServiceBase):
         if 'ratings' in changes.keys():
             self.ratings_param = changes['ratings']
         else:
-            self.ratings_param = 1.0               
+            self.ratings_param = 1.0      
+        if 'rating_bias' in changes.keys():
+            self.rating_bias = changes['rating_bias']
+        else:
+            self.rating_bias = False
+        if 'predictiveness' in changes.keys():
+            self.predictiveness = changes['predictiveness']
+        else:
+            self.predictiveness = False    
+            
         return(0)
         
     ### This functions merely displays the parameters.
@@ -231,6 +240,21 @@ class PythonReputationService(ReputationServiceBase):
     ### We run the update in this function.    
     def update_ranks(self,mydate):
         ### And then we iterate through functions. First we prepare arrays and basic computations.
+        since = mydate - timedelta(days=self.update_period)
+        if self.rating_bias:
+            if 'rater_biases' in dir(self):
+                pass
+            else:
+                self.rater_biases = dict()
+                self.rater_biases[since] = dict()
+        if self.predictiveness:
+            if 'predictive_data' in dir(self):
+                pass
+            else:
+                self.predictive_data = dict()
+                self.predictive_data[since] = dict() 
+                self.pred_values = dict()
+                
         self.current_ratings = []
         ### Sellect data which we will use.
         self.select_data(mydate)
@@ -256,13 +280,31 @@ class PythonReputationService(ReputationServiceBase):
                 self.downrating=False
         ### we set up arrays; this is the set of data where we have ratings, values, weights
         ### in predictable way, so we can iterate them later on.
-        array1 , dates_array, to_array, first_occurance = reputation_calc_p1(self.current_ratings,self.first_occurance,self.precision,
-                                                                             self.temporal_aggregation,False,self.logratings,self.downrating,self.weighting)  
+        
+        if self.rating_bias:
+            if 'average_ratings' in dir(self):
+                pass
+            else:
+                self.average_ratings = dict()
+            self.rater_biases[mydate] = dict()
+            array1 , dates_array, to_array, rater_biases1, avgs = reputation_calc_p1(self.current_ratings,self.conservatism,self.precision,self.temporal_aggregation,False,self.logratings,self.downrating,self.weighting,self.rater_biases[since],self.average_ratings)
+            self.average_ratings[mydate] = avgs
+            self.rater_biases[mydate] = dict(rater_biases1)
+        else:
+            array1 , dates_array, to_array, rater_biases1 = reputation_calc_p1(self.current_ratings,self.conservatism,self.precision,self.temporal_aggregation,False,self.logratings,self.downrating,self.weighting, None)  ### In this case, we don't need rater_biases
         ### Now we update the reputation. Here, old ranings are inseter and then new ones are calculated as output.
+        if self.predictiveness:
+            self.predictive_data[mydate] = dict()
+            avg_ind_rat_byperiod = calculate_average_individual_rating_by_period(array1,True)
+            self.predictive_data, ids = update_predictiveness_data(self.predictive_data,mydate,self.reputation,avg_ind_rat_byperiod,self.all_reputations,self.conservatism)
+            self.calculate_indrating(ids)
+            self.predictive_data = normalize_individual_data(mydate,self.predictive_data)
+            
+            print("predictivenesss:",self.pred_values)
         self.reputation = update_reputation(self.reputation,array1,self.default,self.spendings)
 
         ### we take data from date-update_period.
-        since = self.date - timedelta(days=self.update_period)
+        
         ### If we have spendings-based reputation, we go in the loop below.
         if self.spendings>0:
             spendings_dict = spending_based(array1,dict(),self.logratings,self.precision,self.weighting)
@@ -270,10 +312,8 @@ class PythonReputationService(ReputationServiceBase):
             spendings_dict = normalized_differential(spendings_dict,normalizedRanks=self.fullnorm,our_default=self.default,spendings=self.spendings,log=self.logranks)       
         ### Then we calculate differential the normal way.
         new_reputation = calculate_new_reputation(new_array = array1,to_array = to_array,reputation = self.reputation,rating = self.use_ratings,precision = self.precision,default=self.default,unrated=self.unrated,normalizedRanks=self.fullnorm,weighting = self.weighting,denomination = self.denomination, liquid = self.liquid, logratings = self.logratings,logranks = self.logranks) 
-
         ### And then we normalize the differential:
         new_reputation = normalized_differential(new_reputation,normalizedRanks=self.fullnorm,our_default=self.default,spendings=self.spendings,log=False)
- 
         ### Again only starting this loop if we have spendings.
         if self.spendings>0:
             updated_differential = dict()
@@ -302,13 +342,12 @@ class PythonReputationService(ReputationServiceBase):
         ### See line 360 in https://github.com/aigents/aigents-java/blob/master/src/main/java/net/webstructor/peer/Reputationer.java
         ### and line 94 in https://github.com/aigents/aigents-java/blob/master/src/main/java/net/webstructor/data/Summator.java 
         ### Downratings seem to pass, so I assume this comment is resolved.
-        
         self.reputation = normalize_reputation(self.reputation,array1,self.unrated,self.default,self.decayed,self.conservatism,self.downrating)
         ### round reputations:
         for k in self.reputation.keys():
             self.reputation[k] = my_round(self.reputation[k],2) # Make sure we use my_round. 
             ### This might be changed in the future, but now rounding is done in order to be the same as in Java rs.
-        ## We have all_reputations dictionary where we have all history of reputations with dates as keys.    
+        ## We have all_reputations dictionary where we have all history of reputations with dates as keys.
         self.all_reputations[mydate] = dict(self.reputation)
         
         return(0)
@@ -420,7 +459,52 @@ class PythonReputationService(ReputationServiceBase):
             self.reputation = myreps
         
         return(0)
+
+    def get_historical_ranks(self,theid):
+        all_dates = self.all_reputations.keys()
+        ranks = []
+        for k in sorted(all_dates):
+            if theid in self.all_reputations[k].keys():
+                ranks.append(self.all_reputations[k][theid])
+        return(ranks)
+    
+    def calculate_indrating(self,ids):
         
+        correlats = dict()
+        
+        i=0
+        while i<len(ids):
+            thevalues = []
+            the_reps = []
+            j = 0
+            for k in sorted(self.predictive_data[ids[i]].keys())[0:(len(self.predictive_data[ids[i]].keys())-1)]:
+                self.predictive_data[ids[i]]
+                thevalues.append(self.predictive_data[ids[i]][k])
+                the_reps.append(self.all_reputations[k][ids[i]])
+            #the_reps = self.get_historical_ranks(ids[i])
+            if len(the_reps)!=0:
+                cors = calculate_distance(the_reps,thevalues)
+                #cors = np.corrcoef(the_reps,thevalues)[1,1] 
+            else:
+                cors = 0
+            cors = 1 - cors ### predictiveness is 1-distance
+            print("thereps",the_reps,"thevalues",thevalues)
+            print("cors",cors)
+            print("pred_values[id]",self.pred_values)
+            #if not np.isnan(cors):
+            
+            if ids[i] in self.pred_values.keys():    
+                self.pred_values[ids[i]] = cors * (1 - self.conservatism) + self.pred_values[ids[i]] * self.conservatism
+            else:
+                self.pred_values[ids[i]] = 1
+            
+            i+=1
+            
+        return(0)
+    
+#self.pred_values    
+    
+    
     def __init__(self):
         ### we can also initialie everything.
         self.ratings = {}
